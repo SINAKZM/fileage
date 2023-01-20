@@ -9,4 +9,5 @@ Place this app in **nextcloud/apps/** and make it enable
 for any development as frontend you have to run `npm run build` in fileage folder
 ## Nextcloud Version
 25.0.0 dev
+24.0.8
 # fileage
