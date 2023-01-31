@@ -32,24 +32,35 @@ class FileAgeController extends Controller {
 	 */
 	public function submit($age, $fileInfo): JSONResponse {
 		$selfCreatedFile = $this->fileAgeService->getSelfCreatedFile($this->userSession->getUser()->getUID(), $this->generateFileName($fileInfo));
-		if ($selfCreatedFile) {
-			$expireTimestamp = strtotime('+' . $age . ' days', $selfCreatedFile['timestamp']);
-			$this->fileAgeService->setExpiredAt($this->userSession->getUser()->getUID(), $this->generateFileName($fileInfo), $expireTimestamp, $age);
+		$share = $this->fileAgeService->getShareOwner($this->userSession->getUser()->getUID(), $this->getRootPath($fileInfo));
+		if (!$share) {
+			if ($selfCreatedFile){
+				$this->fileAgeService->setExpiredAt($this->userSession->getUser()->getUID(), $this->generateFileName($fileInfo), $age);
+				return new JSONResponse(
+					[
+						'result' => "delete request successfully submitted",
+					]
+				);
+			}
 			return new JSONResponse(
 				[
-					'result' => "delete request successfully submitted",
-				]
+					'error' => "not found",
+				],400
 			);
 		}
+		$this->fileAgeService->setExpiredAtOnShareOWner($this->userSession->getUser()->getUID(), $this->generateFileName($fileInfo), $age);
 		return new JSONResponse(
 			[
-				'error' => "not found",
-			],400
+				'result' => "delete request successfully submitted",
+			]
 		);
 	}
-
+	/**
+	 * @return JSONResponse
+	 * @NoAdminRequired
+	 */
 	public function show($fileInfo): JSONResponse {
-		$selfCreatedFile = $this->fileAgeService->getSelfCreatedFile($this->userSession->getUser()->getUID(), $this->generateFileName($fileInfo));
+		$selfCreatedFile = $this->fileAgeService->getSelfCreatedFileOnShow($this->userSession->getUser()->getUID(), $this->generateFileName($fileInfo));
 		return new JSONResponse(
 			[
 				'result' => $selfCreatedFile,
@@ -58,5 +69,8 @@ class FileAgeController extends Controller {
 	}
 	private function generateFileName($fileInfo): string {
 		return !$fileInfo['dir'] ? "/{$fileInfo['name']}" : $fileInfo['dir'] . "/{$fileInfo['name']}";
+	}
+	private function getRootPath($fileInfo){
+		return '/'.explode("/",$fileInfo['dir'])[1];
 	}
 }

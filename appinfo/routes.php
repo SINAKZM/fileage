@@ -11,5 +11,6 @@ return [
     'routes' => [
         ['name' => 'FileAge#submit', 'url' => '/', 'verb' => 'POST'],
         ['name' => 'FileAge#show', 'url' => '/get_fileage', 'verb' => 'POST'],
+        ['name' => 'FileAge#getSelfCreated', 'url' => '/get_self_created_path', 'verb' => 'POST'],
     ]
 ];

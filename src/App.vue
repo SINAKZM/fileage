@@ -1,18 +1,27 @@
 <template>
 	<Content :class="{'icon-loading': loading, 'd-block': true }" app-name="vueexample">
-		<div v-if="ageIsDisable">
-			<input type="text"
-				   v-model="age"
-				   @focus="isFocused = true"
-				   @blur="isFocused = false"
-				   placeholder="number of days to delete(content)"
-				   class="w-100" />
-			<br>
-
-			<button @click="sendFileAge"
-					class="button bg-warning w-100">submit</button>
+		<div v-if="fileInfo.type == 'dir'">
+			<div v-if="ageIsDisable">
+				<input type="text"
+					   v-model="age"
+					   @focus="isFocused = true"
+					   @blur="isFocused = false"
+					   placeholder="cycle days to delete"
+					   class="w-100" />
+				<br>
+				<button @click="sendFileAge"
+						class="button bg-warning w-100" style="border-radius: 0; background-color: #30b6ff; color: white">submit</button>
+			</div>
+			<div v-else>you cant access this section</div>
 		</div>
-		<div v-else>you cant access this section</div>
+		<div v-else>
+			<b>uploaded at :</b>
+			<hr>
+			<b>{{createdAtDateTime}}</b>
+			<hr>
+<!--			<b>{{createdAt}}</b>-->
+		</div>
+
 
 	</Content>
 </template>
@@ -37,16 +46,18 @@ export default {
 			starred: false,
 			age: '',
 			fileInfo: '',
+			createdAt: '',
 		}
 	},
 	methods: {
 		update(fileInfo) {
 			this.ageIsDisable = false
 			this.fileInfo = fileInfo
+			console.log(this.fileInfo)
+			debugger
 			if (!fileInfo.shareOwner){
 				this.ageIsDisable = true
 			}
-			console.log(fileInfo);
 		},
 		sendFileAge() {
 			const url = generateUrl('/apps/fileage')
@@ -68,7 +79,7 @@ export default {
 			axios.post(url, body)
 				.then(function (response) {
 					self.age =response.data.result.expired_input;
-					debugger
+					self.createdAt =response.data.result.timestamp;
 				})
 				.catch(function (error) {
 					alert("activity not found")
@@ -90,7 +101,13 @@ export default {
 			this.getFileAge();
 		}
 	},
+	computed:{
+		createdAtDateTime(){
+			return new Date(this.createdAt*1000 ).toString();
+		}
+	},
 	mounted () {
+		console.log(this.fileInfo.shareOwner)
 		this.getFileAge();
 	}
 }

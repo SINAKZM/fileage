@@ -23,8 +23,7 @@ class FileAgeService {
 	public function getExpiredFilesAndFolders() {
 		$result = $this->qb->select('*')
 			->from('activity')
-			->where('expired_at < ' . time())
-			->andWhere('removed_at IS NULL')
+			->where('expired_input IS NOT NULL ')
 			->execute();
 		return $result->fetchAll();
 	}
@@ -32,12 +31,13 @@ class FileAgeService {
 	public function collectFilesAndFolders($expiredFilesAndFolders) {
 		$data = ['files' => [], 'folders' => []];
 		foreach ($expiredFilesAndFolders as $key => $row) {
-			$explodedFiles = explode('/', $row['file']);
-			$ext = pathinfo(end($explodedFiles), PATHINFO_EXTENSION);
-			if ($ext) {
-				$data['files'][] = ['user' => $row['user'], 'relativePath' => $row['file'], 'absolutePath' => $this->generateAbsolutePath($row['user'], $row['file'])];
-			} else {
-				$data['folders'][] = ['user' => $row['user'], 'relativePath' => $row['file'], 'absolutePath' => $this->generateAbsolutePath($row['user'], $row['file'])];
+			$absolutePath = $this->generateAbsolutePath($row['affecteduser'], $row['file']);
+			if (is_dir($absolutePath)){
+				$data['folders'][] = [
+					'user' => $row['user'],
+					'relativePath' => $row['file'],
+					'absolutePath' => $absolutePath
+				];
 			}
 		}
 		return $data;
@@ -52,7 +52,8 @@ class FileAgeService {
 					[
 						'user' => $folder['user'],
 						'relativePath' => $this->getRelativeFilePathFromFolder($folder['relativePath'], $file),
-						'absolutePath' => $file
+						'absolutePath' => $file,
+						'folder'=>$folder['relativePath']
 					]
 				);
 			}
@@ -78,8 +79,19 @@ class FileAgeService {
 	public function removeExpired() {
 		$filesAndFoldersCollection = $this->collectFilesAndFolders($this->getExpiredFilesAndFolders());
 		$extractedFilesFromFolders = $this->extractFilesFromFolders($filesAndFoldersCollection['folders']);
-		$files = array_merge($filesAndFoldersCollection['files'], $extractedFilesFromFolders);
-		$this->remove($files);
+		$expiredFiles = [];
+		foreach ($extractedFilesFromFolders as $key=>$path){
+			if (!is_dir($path['absolutePath'])){
+				$fileActivity = $this->getFileActivity($path['relativePath']);
+				$folderActivity = $this->getFolderActivity($path['folder']);
+				$removeAtTimestamp = strtotime("+{$folderActivity['expired_input']} Days", $fileActivity['timestamp']);
+
+				if ($removeAtTimestamp < time()){
+					$expiredFiles[$key]= $path;
+				}
+			}
+		}
+		$this->remove($expiredFiles);
 		$this->scan();
 	}
 
@@ -127,19 +139,68 @@ class FileAgeService {
 		$result = $this->qb->select('*')
 			->from('activity')
 			->where($this->qb->expr()->eq('user', $this->qb->createNamedParameter($user)))
-			->andWhere($this->qb->expr()->eq('type', $this->qb->createNamedParameter('file_created')))
+			->andWhere($this->qb->expr()->eq('subject', $this->qb->createNamedParameter('created_self')))
+			->andWhere($this->qb->expr()->eq('file', $this->qb->createNamedParameter($path)))
+			->execute();
+		return $result->fetch();
+	}
+	public function getSelfCreatedFileOnShow($user, $path) {
+		$result = $this->qb->select('*')
+			->from('activity')
+			->where($this->qb->expr()->eq('affecteduser', $this->qb->createNamedParameter($user)))
+			->andWhere($this->qb->expr()->eq('file', $this->qb->createNamedParameter($path)))
+			->execute();
+		return $result->fetch();
+	}
+	public function getSelfCreatedPath($user, $path) {
+		$result = $this->qb->select('*')
+			->from('activity')
+			->where($this->qb->expr()->eq('user', $this->qb->createNamedParameter($user)))
+			->andWhere($this->qb->expr()->eq('type', $this->qb->createNamedParameter('self_created')))
 			->andWhere($this->qb->expr()->eq('file', $this->qb->createNamedParameter($path)))
 			->execute();
 		return $result->fetch();
 	}
 
-	public function setExpiredAt($user, $path, $expireTimestamp, $input = null) {
+	public function setExpiredAt($user, $path, $input = null) {
 		$this->qb->update('activity')
-			->set('expired_at', $this->qb->createNamedParameter($expireTimestamp))
 			->set('expired_input', $this->qb->createNamedParameter($input))
 			->where($this->qb->expr()->eq('user', $this->qb->createNamedParameter($user)))
 			->andWhere($this->qb->expr()->eq('type', $this->qb->createNamedParameter('file_created')))
 			->andWhere($this->qb->expr()->eq('file', $this->qb->createNamedParameter($path)));
 		$this->qb->execute();
+	}
+	public function setExpiredAtOnShareOWner($user, $path, $input = null) {
+		$this->qb->update('activity')
+			->set('expired_input', $this->qb->createNamedParameter($input))
+			->where($this->qb->expr()->eq('affecteduser', $this->qb->createNamedParameter($user)))
+			->andWhere($this->qb->expr()->eq('type', $this->qb->createNamedParameter('file_created')))
+			->andWhere($this->qb->expr()->eq('file', $this->qb->createNamedParameter($path)));
+		$this->qb->execute();
+	}
+
+	public function getFolderActivity($folderPath) {
+		return $this->qb->select('*')
+			->from('activity')
+			->where('file = :path')
+			->setParameter("path", $folderPath)
+			->execute()->fetch();
+	}
+	public function getFileActivity($filePath) {
+		return $this->qb->select('*')
+			->from('activity')
+			->where('file = :path')
+			->setParameter("path", $filePath)
+			->execute()->fetch();
+	}
+
+	public function getShareOwner($user, $rootPath) {
+		return $this->qb->select('*')
+			->from('share')
+			->where('file_target = :file_target')
+			->andWhere('uid_owner = :uid_owner')
+			->setParameter("file_target", $rootPath)
+			->setParameter("uid_owner", $user)
+			->execute()->fetch();
 	}
 }
